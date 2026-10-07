@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lucky Kira Brick Breaker</title>
+<style>
+*{box-sizing:border-box} body{margin:0;min-height:100vh;font-family:Arial,"Noto Sans KR",sans-serif;background:linear-gradient(135deg,#11152b,#29184a 55%,#10182f);color:#fff;display:flex;justify-content:center;align-items:center;padding:24px}
+.app{width:min(980px,100%);background:rgba(13,17,38,.9);border:1px solid rgba(255,255,255,.13);border-radius:24px;padding:24px;box-shadow:0 25px 80px rgba(0,0,0,.45)}
+h1{margin:0 0 6px;text-align:center;font-size:34px}.sub{text-align:center;color:#bfc6e8;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:1fr 280px;gap:20px}.card{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:16px}
+.login{display:flex;gap:10px;margin-bottom:14px}.login input{flex:1;padding:12px 14px;border:0;border-radius:12px;font-size:16px}.btn{border:0;border-radius:12px;padding:12px 16px;background:#8b5cf6;color:#fff;font-weight:700;cursor:pointer}.btn:hover{filter:brightness(1.1)}
+.stats{display:flex;justify-content:space-between;margin:8px 2px 12px;color:#dbe0ff;font-weight:700}
+canvas{display:block;width:100%;max-width:640px;aspect-ratio:4/3;background:linear-gradient(#071426,#0d2440);border-radius:14px;margin:auto;border:1px solid rgba(255,255,255,.12)}
+.help{text-align:center;color:#aeb8dc;font-size:14px;margin-top:10px}.rank h2{margin-top:0}.rank ol{padding-left:28px}.rank li{padding:8px 4px;border-bottom:1px solid rgba(255,255,255,.08)}.status{font-size:13px;color:#9da8cf;margin-top:12px;line-height:1.5}
+.overlay{position:relative}.message{position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:rgba(5,8,20,.72);border-radius:14px;text-align:center}.message.show{display:flex}.message h2{font-size:36px;margin:0 0 8px}
+@media(max-width:800px){.grid{grid-template-columns:1fr}.app{padding:14px}.login{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>🎮 Lucky Kira Brick Breaker</h1>
+  <div class="sub">벽돌을 모두 깨고 Top 10에 도전하세요!</div>
+  <div class="login">
+    <input id="name" maxlength="20" placeholder="이름을 입력하세요 / Enter your name">
+    <button class="btn" id="loginBtn">로그인 & 게임 시작</button>
+  </div>
+  <div class="grid">
+    <section class="card">
+      <div class="stats"><span>PLAYER: <b id="player">-</b></span><span>SCORE: <b id="score">0</b></span><span>LIVES: <b id="lives">3</b></span></div>
+      <div class="overlay">
+        <canvas id="game" width="640" height="480"></canvas>
+        <div class="message" id="message"><h2 id="msgTitle">READY</h2><div id="msgText">이름을 입력하고 시작하세요.</div><button class="btn" id="restartBtn" style="margin-top:16px">다시 시작</button></div>
+      </div>
+      <div class="help">← → 방향키로 패들을 움직이세요. 모든 벽돌을 깨면 승리합니다.</div>
+    </section>
+    <aside class="card rank">
+      <h2>🏆 TOP 10</h2>
+      <ol id="ranking"><li>Firebase 연결 후 표시됩니다.</li></ol>
+      <div class="status" id="firebaseStatus">Firebase: 설정 대기 중</div>
+    </aside>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getDatabase, ref, push, set, query, orderByChild, limitToLast, onValue } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+
+/* Firebase Console에서 받은 설정으로 아래 값을 교체하세요. */
+const firebaseConfig = {
+  apiKey: "AIzaSyBCpAL1Ot0TpWwY51QBBrHMCAACFUcQdSU",
+  authDomain: "lucky-brick-breaker.firebaseapp.com",
+  databaseURL: "https://lucky-brick-breaker-default-rtdb.firebaseio.com",
+  projectId: "lucky-brick-breaker",
+  storageBucket: "lucky-brick-breaker.firebasestorage.app",
+  messagingSenderId: "145089419446",
+  appId: "1:145089419446:web:9b30bf94671fefd880ee17",
+  measurementId: "G-VSF3Q8WJWP"
+};
+
+let db=null, firebaseReady=false;
+const statusEl=document.getElementById("firebaseStatus");
+try{
+  if(!firebaseConfig.apiKey.startsWith("YOUR_") && firebaseConfig.databaseURL.startsWith("https://")){
+    const app=initializeApp(firebaseConfig); db=getDatabase(app); firebaseReady=true;
+    statusEl.textContent="Firebase: 연결됨 ✅";
+    const scoresQuery=query(ref(db,"scores"),orderByChild("score"),limitToLast(10));
+    onValue(scoresQuery,(snap)=>{
+      const rows=[]; snap.forEach(c=>rows.push(c.val())); rows.sort((a,b)=>b.score-a.score);
+      const list=document.getElementById("ranking"); list.innerHTML="";
+      if(!rows.length) list.innerHTML="<li>아직 기록이 없습니다.</li>";
+      rows.forEach(r=>{const li=document.createElement("li");li.textContent=`${r.name} — ${r.score}`;list.appendChild(li)});
+    });
+  }
+}catch(e){statusEl.textContent="Firebase 연결 오류: 설정을 확인하세요."}
+
+const canvas=document.getElementById("game"),ctx=canvas.getContext("2d");
+const scoreEl=document.getElementById("score"),livesEl=document.getElementById("lives"),playerEl=document.getElementById("player");
+const message=document.getElementById("message"),msgTitle=document.getElementById("msgTitle"),msgText=document.getElementById("msgText");
+let player="",score=0,lives=3,running=false,left=false,right=false,animationId;
+const paddle={w:105,h:12,x:267.5,y:445,speed:7};
+const ball={x:320,y:420,r:8,dx:4,dy:-4};
+const brick={rows:5,cols:9,w:58,h:20,gap:9,top:55,left:20};
+let bricks=[];
+
+function resetBricks(){bricks=[];for(let r=0;r<brick.rows;r++)for(let c=0;c<brick.cols;c++)bricks.push({x:brick.left+c*(brick.w+brick.gap),y:brick.top+r*(brick.h+brick.gap),alive:true,row:r})}
+function resetBall(){ball.x=320;ball.y=420;ball.dx=(Math.random()>.5?1:-1)*4;ball.dy=-4;paddle.x=267.5}
+function newGame(){score=0;lives=3;scoreEl.textContent=score;livesEl.textContent=lives;resetBricks();resetBall();message.classList.remove("show");running=true;cancelAnimationFrame(animationId);loop()}
+function draw(){
+  ctx.clearRect(0,0,640,480);
+  const colors=["#ff6b8a","#ffb454","#ffe66d","#61e7c2","#6ca8ff"];
+  bricks.forEach(b=>{if(!b.alive)return;ctx.fillStyle=colors[b.row%colors.length];ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=8;ctx.fillRect(b.x,b.y,brick.w,brick.h);ctx.shadowBlur=0});
+  ctx.fillStyle="#f5f7ff";ctx.fillRect(paddle.x,paddle.y,paddle.w,paddle.h);
+  ctx.beginPath();ctx.arc(ball.x,ball.y,ball.r,0,Math.PI*2);ctx.fillStyle="#fff";ctx.fill();
+}
+function collision(){
+  for(const b of bricks){if(b.alive&&ball.x>b.x&&ball.x<b.x+brick.w&&ball.y+ball.r>b.y&&ball.y-ball.r<b.y+brick.h){b.alive=false;ball.dy*=-1;score+=10;scoreEl.textContent=score;break}}
+}
+function finish(win){
+  running=false;cancelAnimationFrame(animationId);msgTitle.textContent=win?"🎉 YOU WIN!":"GAME OVER";msgText.textContent=`${player}님의 점수: ${score}`;message.classList.add("show");saveScore();
+}
+async function saveScore(){
+  if(!firebaseReady||!player)return;
+  try{const n=push(ref(db,"scores"));await set(n,{name:player,score,createdAt:Date.now()})}catch(e){statusEl.textContent="점수 저장 실패: Database Rules를 확인하세요."}
+}
+function loop(){
+  if(!running)return;
+  if(left)paddle.x=Math.max(0,paddle.x-paddle.speed); if(right)paddle.x=Math.min(640-paddle.w,paddle.x+paddle.speed);
+  ball.x+=ball.dx;ball.y+=ball.dy;
+  if(ball.x-ball.r<0||ball.x+ball.r>640)ball.dx*=-1;
+  if(ball.y-ball.r<0)ball.dy*=-1;
+  if(ball.dy>0&&ball.y+ball.r>=paddle.y&&ball.y-ball.r<=paddle.y+paddle.h&&ball.x>=paddle.x&&ball.x<=paddle.x+paddle.w){
+    ball.dy=-Math.abs(ball.dy);ball.dx+=(ball.x-(paddle.x+paddle.w/2))*.03;
+  }
+  collision();
+  if(bricks.every(b=>!b.alive)){finish(true);draw();return}
+  if(ball.y-ball.r>480){lives--;livesEl.textContent=lives;if(lives<=0){finish(false);draw();return}else resetBall()}
+  draw();animationId=requestAnimationFrame(loop);
+}
+document.addEventListener("keydown",e=>{if(e.key==="ArrowLeft"){left=true;e.preventDefault()}if(e.key==="ArrowRight"){right=true;e.preventDefault()}});
+document.addEventListener("keyup",e=>{if(e.key==="ArrowLeft")left=false;if(e.key==="ArrowRight")right=false});
+document.getElementById("loginBtn").onclick=()=>{const n=document.getElementById("name").value.trim();if(!n){alert("이름을 입력해주세요.");return}player=n;playerEl.textContent=n;newGame()};
+document.getElementById("restartBtn").onclick=()=>{if(player)newGame()};
+resetBricks();draw();message.classList.add("show");
+</script>
+</body>
+</html>
